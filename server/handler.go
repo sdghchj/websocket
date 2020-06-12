@@ -3,19 +3,22 @@ package server
 import (
 	"github.com/gorilla/websocket"
 	"net/http"
-	"time"
 )
 
 type WSServerHandler struct {
 	websocket.Upgrader
 	responseHeader http.Header
 	onConnect      func(conn *WSConnection)
-	onRead         func(conn *WSConnection, frameType int, data []byte)
 	onClose        func(conn *WSConnection)
+	onRead         func(c *WSConnection, isBinary bool, data []byte)
 }
 
-func NewWSServerHandler() *WSServerHandler {
-
+func NewWSServerHandler(onConnect, onclose func(conn *WSConnection), onRead func(c *WSConnection, isBinary bool, data []byte)) *WSServerHandler {
+	return &WSServerHandler{
+		onConnect: onConnect,
+		onClose:   onclose,
+		onRead:    onRead,
+	}
 }
 
 func (handler *WSServerHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -34,10 +37,9 @@ func (handler *WSServerHandler) ServeHTTP(response http.ResponseWriter, request 
 	wsc := NewWSConnection(conn)
 
 	if handler.onClose != nil {
+		defaultCloser := conn.CloseHandler()
 		conn.SetCloseHandler(func(code int, text string) error {
-			wsc.Close()
-			message := websocket.FormatCloseMessage(code, "")
-			wsc.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Minute))
+			defaultCloser(code, text)
 			handler.onClose(wsc)
 			return nil
 		})
@@ -45,22 +47,5 @@ func (handler *WSServerHandler) ServeHTTP(response http.ResponseWriter, request 
 
 	handler.onConnect(wsc)
 
-	if handler.onRead != nil {
-		go func() {
-			for {
-				select {
-				case <-wsc.Done():
-					return
-				default:
-					ft, data, err := wsc.ReadMessage()
-					if err != nil {
-						wsc.Close()
-						return
-					} else {
-						handler.onRead(wsc, ft, data)
-					}
-				}
-			}
-		}()
-	}
+	go wsc.DispatchMessages(handler.onRead)
 }

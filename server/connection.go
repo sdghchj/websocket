@@ -1,30 +1,58 @@
 package server
 
-import "github.com/gorilla/websocket"
+import (
+	"fmt"
+	"github.com/gorilla/websocket"
+)
 
 type WSConnection struct {
 	*websocket.Conn
-	done chan bool
 }
 
 func NewWSConnection(conn *websocket.Conn) *WSConnection {
 	return &WSConnection{
 		Conn: conn,
-		done: make(chan bool),
 	}
 }
 
-func (c *WSConnection) Done() chan bool {
-	return c.done
+func (c *WSConnection) WriteMessage(isBinary bool, data []byte) error {
+	if isBinary {
+		c.Conn.WriteMessage(websocket.BinaryMessage, data)
+	} else {
+		c.Conn.WriteMessage(websocket.TextMessage, data)
+	}
+	return nil
+}
+
+func (c *WSConnection) WriteCloseMessage(code int, text string) error {
+	if code == 0 {
+		code = websocket.CloseNormalClosure
+	}
+	c.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, text))
+	return nil
+}
+
+func (c *WSConnection) DispatchMessages(onRead func(c *WSConnection, isBinary bool, data []byte)) error {
+	for {
+		c.Close()
+		ft, data, err := c.ReadMessage()
+		if err != nil {
+			fmt.Println("exit read loop: ", err)
+			c.Close()
+			return err
+		} else if ft == websocket.BinaryMessage {
+			onRead(c, true, data)
+		} else if ft == websocket.TextMessage {
+			onRead(c, false, data)
+		}
+	}
+	return nil
 }
 
 func (c *WSConnection) Close() {
-	if c.done != nil {
-		close(c.done)
-		c.done = nil
-	}
+	fmt.Println("server close the connection")
 	if c.Conn != nil {
+		c.WriteCloseMessage(websocket.CloseNormalClosure, "")
 		c.Conn.Close()
-		c.Conn = nil
 	}
 }

@@ -1,4 +1,4 @@
-module websocket
+module github.com/sdghchj/websocket
 
 go 1.13
 
