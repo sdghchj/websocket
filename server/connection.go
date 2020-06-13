@@ -34,7 +34,6 @@ func (c *WSConnection) WriteCloseMessage(code int, text string) error {
 
 func (c *WSConnection) DispatchMessages(onRead func(c *WSConnection, isBinary bool, data []byte)) error {
 	for {
-		c.Close()
 		ft, data, err := c.ReadMessage()
 		if err != nil {
 			fmt.Println("exit read loop: ", err)
