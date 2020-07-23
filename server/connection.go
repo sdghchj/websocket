@@ -34,17 +34,24 @@ func (c *WSConnection) WriteCloseMessage(code int, text string) error {
 	if code == 0 {
 		code = websocket.CloseNormalClosure
 	}
-	c.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, text))
-	return nil
+	return c.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(code, text))
 }
 
 func (c *WSConnection) DispatchMessages(onRead func(c *WSConnection, isBinary bool, data []byte)) error {
 	for {
 		ft, data, err := c.ReadMessage()
 		if err != nil {
-			fmt.Println("exit read loop: ", err)
-			c.Close()
-			return err
+			if _, ok := err.(*websocket.CloseError); ok {
+				fmt.Printf("connection [%s] closed passively: %v\n", c.GetID(), err)
+				if c.Conn != nil {
+					c.Conn.Close()
+				}
+				return err
+			} else if err != nil {
+				fmt.Printf("error occurred when reading message: %v, close the connection [%s]", err, c.GetID())
+				c.Close(websocket.CloseNormalClosure, err.Error())
+				return err
+			}
 		} else if ft == websocket.BinaryMessage {
 			onRead(c, true, data)
 		} else if ft == websocket.TextMessage {
@@ -54,10 +61,9 @@ func (c *WSConnection) DispatchMessages(onRead func(c *WSConnection, isBinary bo
 	return nil
 }
 
-func (c *WSConnection) Close() {
-	fmt.Println("server close the connection")
+func (c *WSConnection) Close(code int, text string) {
 	if c.Conn != nil {
-		c.WriteCloseMessage(websocket.CloseNormalClosure, "")
+		_ = c.CloseHandler()(websocket.CloseNormalClosure, text)
 		c.Conn.Close()
 	}
 }
