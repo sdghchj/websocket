@@ -46,6 +46,10 @@ func (c *WSConnection) dispatchMessages(onRead func(c *WSConnection, isBinary bo
 	}
 }
 
+func (c *WSConnection) Done() <-chan bool {
+	return c.done
+}
+
 func (c *WSConnection) WriteMessage(isBinary bool, data []byte) error {
 	if isBinary {
 		return c.Conn.WriteMessage(websocket.BinaryMessage, data)
