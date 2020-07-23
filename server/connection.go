@@ -45,7 +45,7 @@ func (c *WSConnection) dispatchMessages(onRead func(c *WSConnection, isBinary bo
 				return err
 			} else if err != nil {
 				fmt.Printf("error occurred when reading message: %v, close the connection [%s]", err, c.GetID())
-				_ = c.CloseHandler()(websocket.CloseAbnormalClosure, err.Error())
+				_ = c.WriteCloseMessage(websocket.CloseNormalClosure, "")
 			}
 		} else if ft == websocket.BinaryMessage {
 			onRead(c, true, data)
@@ -55,8 +55,15 @@ func (c *WSConnection) dispatchMessages(onRead func(c *WSConnection, isBinary bo
 	}
 }
 
+func (c *WSConnection) WriteCloseMessage(code int, text string) error {
+	if code == 0 {
+		code = websocket.CloseNormalClosure
+	}
+	return c.Conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, text), time.Now().Add(time.Second*10))
+}
+
 func (c *WSConnection) Close(code int, text string) error {
-	err := c.CloseHandler()(code, text) //including OnClose
+	err := c.WriteCloseMessage(websocket.CloseNormalClosure, "")
 	if err != nil && err != websocket.ErrCloseSent {
 		return err
 	}
