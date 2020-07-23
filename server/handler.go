@@ -70,5 +70,5 @@ func (handler *WSServerHandler) ServeHTTP(response http.ResponseWriter, request 
 		handler.onConnect(wsc)
 	}
 
-	go wsc.DispatchMessages(handler.onRead)
+	go wsc.dispatchMessages(handler.onRead)
 }
