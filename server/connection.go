@@ -3,17 +3,20 @@ package server
 import (
 	"fmt"
 	"github.com/gorilla/websocket"
+	"time"
 )
 
 type WSConnection struct {
 	*websocket.Conn
-	id string
+	id   string
+	done chan bool
 }
 
 func NewWSConnection(conn *websocket.Conn, id string) *WSConnection {
 	return &WSConnection{
 		Conn: conn,
 		id:   id,
+		done: make(chan bool),
 	}
 }
 
@@ -29,7 +32,10 @@ func (c *WSConnection) WriteMessage(isBinary bool, data []byte) error {
 }
 
 func (c *WSConnection) dispatchMessages(onRead func(c *WSConnection, isBinary bool, data []byte)) error {
-	defer c.Conn.Close()
+	defer func() {
+		c.Conn.Close()
+		close(c.done)
+	}()
 	for {
 		ft, data, err := c.Conn.ReadMessage()
 		if err != nil {
@@ -39,7 +45,7 @@ func (c *WSConnection) dispatchMessages(onRead func(c *WSConnection, isBinary bo
 				return err
 			} else if err != nil {
 				fmt.Printf("error occurred when reading message: %v, close the connection [%s]", err, c.GetID())
-				c.Close(websocket.CloseAbnormalClosure, err.Error())
+				_ = c.CloseHandler()(websocket.CloseAbnormalClosure, err.Error())
 			}
 		} else if ft == websocket.BinaryMessage {
 			onRead(c, true, data)
@@ -50,5 +56,14 @@ func (c *WSConnection) dispatchMessages(onRead func(c *WSConnection, isBinary bo
 }
 
 func (c *WSConnection) Close(code int, text string) error {
-	return c.CloseHandler()(code, text) //including OnClose
+	err := c.CloseHandler()(code, text) //including OnClose
+	if err != nil && err != websocket.ErrCloseSent {
+		return err
+	}
+	select {
+	case <-time.NewTimer(time.Second * 10).C:
+		return fmt.Errorf("timeout")
+	case <-c.done:
+		return nil
+	}
 }

@@ -9,6 +9,7 @@ import (
 
 type WSConnection struct {
 	*websocket.Conn
+	done chan bool
 }
 
 func NewWSConnection(endpoint string, headers http.Header, onRead func(c *WSConnection, isBinary bool, data []byte)) (*WSConnection, *http.Response, error) {
@@ -16,22 +17,26 @@ func NewWSConnection(endpoint string, headers http.Header, onRead func(c *WSConn
 	if err != nil {
 		return nil, resp, err
 	}
-	wc := &WSConnection{Conn: c}
+	wc := &WSConnection{Conn: c, done: make(chan bool)}
 	go wc.dispatchMessages(onRead)
 	return wc, resp, err
 }
 
 func (c *WSConnection) dispatchMessages(onRead func(c *WSConnection, isBinary bool, data []byte)) error {
-	defer c.Conn.Close()
+	defer func() {
+		c.Conn.Close()
+		close(c.done)
+	}()
 	for {
 		ft, data, err := c.ReadMessage()
 		if err != nil {
-			if _, ok := err.(*websocket.CloseError); ok {
+			if peerCloserErr, ok := err.(*websocket.CloseError); ok {
 				fmt.Printf("connection onClose: %v\n", err)
+				_ = c.WriteCloseMessage(peerCloserErr.Code, peerCloserErr.Text)
 				return err
 			} else if err != nil {
 				fmt.Printf("error occurred when reading message, close the connection [%v]\n", err)
-				_ = c.Close()
+				_ = c.WriteCloseMessage(websocket.CloseAbnormalClosure, err.Error())
 			}
 		} else if ft == websocket.BinaryMessage {
 			onRead(c, true, data)
@@ -56,5 +61,14 @@ func (c *WSConnection) WriteCloseMessage(code int, text string) error {
 }
 
 func (c *WSConnection) Close() error {
-	return c.WriteCloseMessage(websocket.CloseNormalClosure, "")
+	err := c.WriteCloseMessage(websocket.CloseNormalClosure, "")
+	if err != nil && err != websocket.ErrCloseSent {
+		return err
+	}
+	select {
+	case <-time.NewTimer(time.Second * 10).C:
+		return fmt.Errorf("timeout")
+	case <-c.done:
+		return nil
+	}
 }

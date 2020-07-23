@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -36,7 +37,10 @@ func main() {
 		defer close(done)
 		for {
 			_, message, err := c.ReadMessage()
-			if err != nil {
+			if _, ok := err.(*websocket.CloseError); ok {
+				fmt.Printf("connection closed passively: %v\n", err)
+				return
+			} else if err != nil {
 				log.Println("read:", err)
 				return
 			}
