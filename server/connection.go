@@ -7,12 +7,18 @@ import (
 
 type WSConnection struct {
 	*websocket.Conn
+	id string
 }
 
-func NewWSConnection(conn *websocket.Conn) *WSConnection {
+func NewWSConnection(conn *websocket.Conn, id string) *WSConnection {
 	return &WSConnection{
 		Conn: conn,
+		id:   id,
 	}
+}
+
+func (c *WSConnection) GetID() string {
+	return c.id
 }
 
 func (c *WSConnection) WriteMessage(isBinary bool, data []byte) error {

@@ -11,20 +11,39 @@ type WSServerHandler struct {
 	onConnect      func(conn *WSConnection)
 	onClose        func(conn *WSConnection)
 	onRead         func(c *WSConnection, isBinary bool, data []byte)
+	getID          func(conn *http.Request) string
 }
 
-func NewWSServerHandler(onConnect, onclose func(conn *WSConnection), onRead func(c *WSConnection, isBinary bool, data []byte)) *WSServerHandler {
+func NewWSServerHandler(onRead func(c *WSConnection, isBinary bool, data []byte)) *WSServerHandler {
 	return &WSServerHandler{
-		onConnect: onConnect,
-		onClose:   onclose,
-		onRead:    onRead,
+		onRead: onRead,
 	}
 }
 
+func (handler *WSServerHandler) SetConnectHandler(onConnect func(conn *WSConnection)) *WSServerHandler {
+	handler.onConnect = onConnect
+	return handler
+}
+
+func (handler *WSServerHandler) SetCloseHandler(onClose func(conn *WSConnection)) *WSServerHandler {
+	handler.onClose = onClose
+	return handler
+}
+
+func (handler *WSServerHandler) SetIDGetter(getID func(conn *http.Request) string) *WSServerHandler {
+	handler.getID = getID
+	return handler
+}
+
 func (handler *WSServerHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	if handler.onConnect == nil {
+	if handler.onRead == nil {
 		response.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+
+	var id string
+	if handler.getID != nil {
+		id = handler.getID(request)
 	}
 
 	conn, err := handler.Upgrader.Upgrade(response, request, handler.responseHeader)
@@ -34,18 +53,22 @@ func (handler *WSServerHandler) ServeHTTP(response http.ResponseWriter, request 
 		return
 	}
 
-	wsc := NewWSConnection(conn)
+	wsc := NewWSConnection(conn, id)
 
 	if handler.onClose != nil {
 		defaultCloser := conn.CloseHandler()
 		conn.SetCloseHandler(func(code int, text string) error {
 			defaultCloser(code, text)
-			handler.onClose(wsc)
+			if handler.onClose != nil {
+				handler.onClose(wsc)
+			}
 			return nil
 		})
 	}
 
-	handler.onConnect(wsc)
+	if handler.onConnect != nil {
+		handler.onConnect(wsc)
+	}
 
 	go wsc.DispatchMessages(handler.onRead)
 }
