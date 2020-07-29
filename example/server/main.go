@@ -20,7 +20,6 @@ func main() {
 		}).SetConnectHandler(func(conn *server.WSConnection) {
 		fmt.Printf("a connection opened: %s\n", conn.GetID())
 	}).SetCloseHandler(func(conn *server.WSConnection) {
-		conn.Conn.Close()
 		fmt.Printf("the peer closed the websocket connection: %s\n", conn.GetID())
 	}).SetIDGetter(func(request *http.Request) string {
 		return request.Header.Get("client-id")
